@@ -62,7 +62,7 @@ The CRK format consists of a title, a blank line, then a series of patches, each
 blank line. The individual patches consist of a title, filename and a series of offsets and changes.
 
 Example:
-```crk
+```
 This is an example CRK file
 ; Comments can be added anywhere using semicolons
 
@@ -108,7 +108,7 @@ Take the output:
 ```
 
 and add information like so:
-```crk
+```
 CRK title
 
 Patch title
