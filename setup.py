@@ -13,5 +13,8 @@ setup(
         "Programming Language :: Python :: 3.8",
     ],
     packages=["pycrk"],
-    entry_points={"console_scripts": ["pycrk=pycrk.__main__:main"]},
+    entry_points={"console_scripts": [
+        "crk-apply=pycrk.__main__:apply_crk",
+        "crk-generate=pycrk.__main__:generate_crk",
+    ]},
 )

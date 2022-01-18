@@ -1,7 +1,7 @@
 pycrk
 =====
 
-Applies/removes patches using the `.crk` format.
+Generates/applies/removes patches in `.crk` format.
 
 
 Why use CRK?
@@ -26,35 +26,9 @@ comments. As far as I can tell, there is no modern format for doing this.
 Why not?
 --------
 The CRK format is a poor format for something like program updates, ROM hacks, or other cases where
-a lot of data changes or shifts around. Something like [xdelta](https://github.com/jmacd/xdelta)
-would be better for these use cases.
+a lot of data changes or shifts around. It also only works for in-place patches where the size of
+the file stays the same.
 
-Installation
-------------
-```
-$ python3 -m venv .venv
-$ source .venv/bin/activate
-(.venv)$ pip install git+https://github.com/pR0Ps/pycrk.git
-```
-
-Usage
------
-```
-$ pycrk --help
-usage: pycrk [-h] [--wd WD] [--ask] [--unpatch] [--patch] file
-
-Applies patches from CRK files
-
-positional arguments:
-  file        The CRK file to use
-
-optional arguments:
-  -h, --help  show this help message and exit
-  --wd WD     The directory that holds the file(s) to patch
-  --ask       Ask to apply individual patches? (requires --patch/--unpatch)
-  --unpatch   Remove the patches (default: show patched/unpatched status)
-  --patch     Apply the patches (default: show patched/unpatched status)
-```
 
 Format overview
 ---------------
@@ -69,7 +43,7 @@ This is an example CRK file
 Apply patch 1            ; The title of the first patch
 file.ext                 ; The filename the patch applies to
 00000000: FF AA          ; Change byte at 0x00000000 from 0xFF to 0xAA
-0000000A: FF AA          ; Another change
+0000000A: 01 02          ; Change byte at 0x0000000A from 0x01 to 0x02
 
 ; To start writing another patch, use a blank line
 ; (note: lines with comments are not considered "blank")
@@ -80,41 +54,61 @@ another_file.ext
 ; Optionally many more patches
 ```
 
+
+Installation
+------------
+```
+$ python3 -m venv .venv
+$ source .venv/bin/activate
+(.venv)$ pip install git+https://github.com/pR0Ps/pycrk.git
+```
+
+
+Applying patches from CRK files
+------------------------------
+
+The included `crk-apply` script applies CRK patches. When given a CRK patch and no other options it
+will show a list of patches and if they have been applied to files in the working directory or not.
+To have it make changes to the files, use the `--patch` or `--unpatch` flags. Using `--ask`
+interactively asks about each individual patch.
+
+```
+$ crk-apply --help
+usage: crk-apply [-h] [--wd WD] [--ask] [--unpatch] [--patch] file
+
+Apply a CRK patch
+
+positional arguments:
+  file        The CRK file to apply (use '-' for stdin)
+
+optional arguments:
+  -h, --help  show this help message and exit
+  --wd WD     The directory that contains the file(s) to patch (default: .)
+  --ask       Ask to apply individual patches? (requires --patch/--unpatch)
+  --unpatch   Remove the patches (default: show patched/unpatched status)
+  --patch     Apply the patches (default: show patched/unpatched status)
+```
+
 Generating CRK files
 --------------------
 
-This tool will probably grow the ability to generate `*.crk` files in the future. For the moment use the
-tools below to generate the patch data and manually edit the result to conform to the CRK format.
+The included `crk-generate` script generates a CRK patch by comparing the differences in two files
+or directories. By default the resulting CRK patch will be written to stdout.
 
-### Windows
-```powershell
-# Note: when using Powershell `fc` is an alias for `Format-Custom` so `fc.exe` is required.
-# In cmd.exe just `fc` will work.
-fc.exe <file1> <file2>
 ```
+$ crk-generate --help
+usage: crk-generate [-h] [-o <path>] original patched
 
-### Unix
-```bash
-cmp -l <file1> <file2> | gawk '{printf "%08X: %02X %02X\n", $1-1, strtonum(0$2), strtonum(0$3)}'
-```
+Generate a CRK patch from 2 files/directories
 
-The above commands will produce the `xxxxxxxx: yy zz` data. To convert this to the CRK format just
-add a title, blank line, patch title, and the filename it applies to.
+positional arguments:
+  original              The original file/directory
+  patched               The patched file/directory
 
-Take the output:
-```
-00000000: FF AA
-0000000A: FF AA
-```
-
-and add information like so:
-```
-CRK title
-
-Patch title
-filename.ext
-00000000: FF AA
-0000000A: FF AA
+optional arguments:
+  -h, --help            show this help message and exit
+  -o <path>, --output <path>
+                        Write generated CRK patch to <path> instead of stdout
 ```
 
 License
