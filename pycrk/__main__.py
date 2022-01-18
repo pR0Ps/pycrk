@@ -3,6 +3,7 @@
 import argparse
 import logging
 import os
+import sys
 from typing import Optional
 
 from pycrk import make_file_crk, make_dir_crk, Crk
@@ -42,7 +43,13 @@ def generate_crk() -> None:
     else:
         crk = make_dir_crk(args.original, args.patched)
 
-    print(crk.serialize(), file=args.output)
+    # Ignore BrokenPipeErrors on output
+    try:
+        print(crk.serialize(), file=args.output)
+        args.output.flush()
+    except BrokenPipeError:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), args.output.fileno())
+        sys.exit(128 + 13) # SIGPIPE
 
 
 def apply_crk():
