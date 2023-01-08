@@ -14,50 +14,6 @@ CHANGE_RE = re.compile(r"^([0-9a-f]+)\s*:\s*([0-9a-f]{2})\s+([0-9a-f]{2})$", re.
 READ_BUFFER = 1024 * 4  # Read files in 4KB chunks
 
 
-def _strip_comments(lines: Iterable[str]) -> Generator[str, None, None]:
-    """Strip comments off lines and yield back non-empty ones"""
-    for line in lines:
-        if l := line.split(";", 1)[0].strip():
-            yield l
-
-
-def _walk_files(directory: os.PathLike):
-    """Yield all files in a directory relative to the starting dir"""
-    for root, _, files in os.walk(directory):
-        for f in files:
-            yield os.path.relpath(os.path.join(root, f), start=directory)
-
-
-def _find_changes(original: os.PathLike, patched: os.PathLike) -> List[Change]:
-    """Get a list of Change objects based on two files"""
-
-    changes = []
-    with open(original, "rb") as fp1, open(patched, "rb") as fp2:
-        offset = 0
-
-        while True:
-            d1 = fp1.read(READ_BUFFER)
-            d2 = fp2.read(READ_BUFFER)
-
-            if len(d1) != len(d2):
-                raise ValueError("Files are not the same size - can't diff them")
-
-            if not d1:
-                break
-
-            for i, (b1, b2) in enumerate(zip(d1, d2)):
-                if b1 != b2:
-                    changes.append(Change(
-                        offset=offset + i,
-                        orig=bytes([b1]),
-                        patch=bytes([b2])
-                    ))
-
-            offset += len(d1)
-
-    return changes
-
-
 class InvalidFormat(ValueError):
     pass
 
@@ -248,6 +204,50 @@ class Crk:
             "\n;".join(self.title.splitlines()),
             "\n\n".join(x.serialize() for x in self.patches)
         )
+
+
+def _strip_comments(lines: Iterable[str]) -> Generator[str, None, None]:
+    """Strip comments off lines and yield back non-empty ones"""
+    for line in lines:
+        if l := line.split(";", 1)[0].strip():
+            yield l
+
+
+def _walk_files(directory: os.PathLike):
+    """Yield all files in a directory relative to the starting dir"""
+    for root, _, files in os.walk(directory):
+        for f in files:
+            yield os.path.relpath(os.path.join(root, f), start=directory)
+
+
+def _find_changes(original: os.PathLike, patched: os.PathLike) -> List[Change]:
+    """Get a list of Change objects based on two files"""
+
+    changes = []
+    with open(original, "rb") as fp1, open(patched, "rb") as fp2:
+        offset = 0
+
+        while True:
+            d1 = fp1.read(READ_BUFFER)
+            d2 = fp2.read(READ_BUFFER)
+
+            if len(d1) != len(d2):
+                raise ValueError("Files are not the same size - can't diff them")
+
+            if not d1:
+                break
+
+            for i, (b1, b2) in enumerate(zip(d1, d2)):
+                if b1 != b2:
+                    changes.append(Change(
+                        offset=offset + i,
+                        orig=bytes([b1]),
+                        patch=bytes([b2])
+                    ))
+
+            offset += len(d1)
+
+    return changes
 
 
 def make_file_crk(original: os.PathLike, patched: os.PathLike) -> Crk:
