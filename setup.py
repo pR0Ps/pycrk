@@ -14,7 +14,7 @@ except Exception:
 
 setup(
     name="pycrk",
-    version="0.0.1",
+    version="1.0.0",
     description="Applies/restores patches in *.crk files",
     long_description=long_description,
     long_description_content_type="text/markdown",
