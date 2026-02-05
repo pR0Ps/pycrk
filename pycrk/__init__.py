@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from binascii import hexlify
+import io
 import logging
 import os
 import os.path
@@ -192,6 +194,45 @@ class Crk:
         with open(path, "rt") as fp:
             return cls.from_file(fp)
 
+    @classmethod
+    def from_ips_with_file(cls, ips: "IPSPatch", file, filename=None):
+        filename = filename or getattr(file, "name", ips.filename)
+        if not filename:
+            raise ValueError("A CRK file requires the name of the file to patch")
+
+        changes = []
+        for r in ips.records:
+            file.seek(r.offset)
+            orig_data = file.read(len(r.patch))
+
+            if len(r.patch) != len(orig_data):
+                raise ValueError(
+                    f"IPS patch does not apply to '{filename}' - the file is too small"
+                )
+
+            for i, (b1, b2) in enumerate(zip(orig_data, r.patch)):
+                if b1 != b2:
+                    changes.append(Change(offset=r.offset + i, orig=b1, patch=b2))
+
+        if not changes:
+            raise ValueError("IPS patch didn't specify any changes (is the file already patched?)")
+
+        return cls(
+            title=f"Patch for {filename}",
+            patches=[
+                Patch(
+                    title=f"Patch {len(changes)} bytes in {filename}",
+                    filename=filename,
+                    changes=changes,
+                )
+            ]
+        )
+
+    @classmethod
+    def from_ips_with_path(cls, ips: "IPSPatch", path):
+        with open(path, "rb") as fp:
+            return cls.from_ips_with_file(ips, fp)
+
     def __repr__(self) -> str:
         return '{}("{}", patches={})'.format(
             self.__class__.__name__,
@@ -205,6 +246,148 @@ class Crk:
             "\n;".join(self.title.splitlines()),
             "\n\n".join(x.serialize() for x in self.patches)
         )
+
+
+class IPSRecord:
+    def __init__(self, offset: int, patch: bytes):
+        self.offset = offset
+        self.patch = patch
+
+    def __repr__(self) -> str:
+        return "{}(offset={:08X}, patch={})".format(
+            self.__class__.__name__,
+            self.offset,
+            hexlify(self.patch).decode()
+        )
+
+    @classmethod
+    def from_crk_patch(cls, patch: Patch) -> Iterable["IPSRecord"]:
+        """Make IPSRecords from a CRK Patch"""
+        changes = iter(sorted(patch.changes, key=lambda c: c.offset))
+
+        # preload first change to make later logic easier
+        c = next(changes, None)
+        if c is None:
+            return
+        curr_data = [c.patch]
+        curr_offset = c.offset
+        prev_offset = c.offset
+
+        for c in changes:
+            # switch to a new IPS record once the patch skips a byte or get too big
+            if c.offset != prev_offset + 1 or len(curr_data) >= 65535:
+                yield cls(offset=curr_offset, patch=bytes(curr_data))
+
+                curr_offset = c.offset
+                curr_data.clear()
+            curr_data.append(c.patch)
+            prev_offset = c.offset
+
+        yield cls(offset=curr_offset, patch=bytes(curr_data))
+
+    @classmethod
+    def from_file(cls, file) -> "IPSRecord":
+        def _read(s):
+            d = file.read(s)
+            if len(d) < s:
+                raise ValueError("Failed to parse IPS record - not enough data")
+            return d
+
+        offset = int.from_bytes(_read(3), byteorder="big")
+        size = int.from_bytes(_read(2), byteorder="big")
+        if size == 0:
+            size = int.from_bytes(_read(2), byteorder="big")
+            data = _read(1) * size
+        else:
+            data = _read(size)
+        return cls(offset=offset, patch=data)
+
+    def serialize(self) -> bytes:
+        if len(self.patch) > 3 and all(x == self.patch[0] for x in self.patch):
+            # optimize with run-length encoding
+            return (
+                self.offset.to_bytes(3, byteorder="big") +
+                bytes(2) +
+                len(self.patch).to_bytes(2, byteorder="big") +
+                bytes([self.patch[0]])
+            )
+        return (
+            self.offset.to_bytes(3, byteorder="big") +
+            len(self.patch).to_bytes(2, byteorder="big") +
+            self.patch
+        )
+
+
+class IPSPatch:
+    def __init__(self, records: Sequence[IPSRecord], filename=None):
+        self.records = records
+        self.filename = filename
+
+    @classmethod
+    def from_crk(cls, crk: Crk) -> Iterable["IPSPatch"]:
+        """Make IPSPatches from a Crk"""
+        records = []
+        curr_file = None
+        for p in sorted(crk.patches, key=lambda p: p.filename):
+            if curr_file is None:
+                curr_file = p.filename
+            if curr_file != p.filename and records:
+                yield cls(records=records, filename=curr_file)
+                records = []
+                curr_file = p.filename
+            records.extend(IPSRecord.from_crk_patch(p))
+
+        if records:
+            yield cls(records=records, filename=curr_file)
+
+    @classmethod
+    def from_file(cls, file) -> "IPSPatch":
+        if file.read(5) != b"PATCH":
+            raise InvalidFormat("IPS patch missing header")
+
+        records = []
+        # peek 4 bytes while checking for EOF to make sure we hit the end of the
+        # file and not just a record with an offset of 0x454F46 ("EOF" in ascii)
+        while (d := _peek(file, 4)) and d != b"EOF":
+            records.append(IPSRecord.from_file(file))
+
+        eof = file.read()
+        if eof != b"EOF":
+            __log__.warning("Incorrect data and end of IPS file: %r", eof)
+
+        return cls(records=records)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "IPSPatch":
+        return cls.from_file(io.BytesIO(data))
+
+    @classmethod
+    def from_path(cls, path) -> "IPSPatch":
+        with open(path, "rb") as fp:
+            return cls.from_file(fp)
+
+    def __repr__(self) -> str:
+        return '{}(records={})'.format(
+            self.__class__.__name__,
+            self.records,
+        )
+
+    def serialize(self) -> bytes:
+        return (
+            b"PATCH" +
+            b"".join(r.serialize() for r in self.records) +
+            b"EOF"
+        )
+
+
+def _peek(fp, size):
+    """Peek at the next size bytes of fp"""
+    pos = fp.tell()
+    try:
+        data = fp.read(size)
+    finally:
+        fp.seek(pos)
+    return data
 
 
 def _strip_comments(lines: Iterable[str]) -> Generator[str, None, None]:

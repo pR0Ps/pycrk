@@ -35,5 +35,7 @@ setup(
     entry_points={"console_scripts": [
         "crk-apply=pycrk.__main__:apply_crk",
         "crk-generate=pycrk.__main__:generate_crk",
+        "crk-to-ips=pycrk.__main__:crk_to_ips",
+        "crk-from-ips=pycrk.__main__:crk_from_ips",
     ]},
 )

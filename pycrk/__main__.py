@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Optional
 
-from pycrk import make_file_crk, make_dir_crk, Crk
+from pycrk import make_file_crk, make_dir_crk, Crk, IPSPatch
 
 
 def generate_crk() -> None:
@@ -127,6 +127,80 @@ def apply_crk():
             else:
                 msg("SKIPPED", patch)
 
+
+def crk_to_ips():
+    """Given a crk file, convert it into an IPS patch"""
+    logging.basicConfig(format="[%(levelname)8s] %(message)s", level=logging.WARNING)
+
+    parser = argparse.ArgumentParser(
+        description="Convert a CRK patch to IPS patches"
+    )
+    parser.add_argument(
+        "file",
+        type=argparse.FileType('rt'),
+        help="The CRK file to convert (use '-' for stdin)"
+    )
+    parser.add_argument(
+        "-o", "--output-dir",
+        metavar="<directory>",
+        help="Directory to write the IPS patch(es) into",
+        default="."
+    )
+
+    args = parser.parse_args()
+
+    crk = Crk.from_file(args.file)
+
+    i = 0
+    for ips in IPSPatch.from_crk(crk):
+        filename = ips.filename
+        if not ips.filename:
+            i += 1
+            filename = f"patch_{i}"
+        path = os.path.join(args.output_dir, f"{filename}.ips")
+
+        print(f"Writing IPS patch with {len(ips.records)} records to {path}")
+        with open(path, "wb") as fp:
+            fp.write(ips.serialize())
+
+
+def crk_from_ips():
+    """Given an IPS patch, convert it into a CRK"""
+    logging.basicConfig(format="[%(levelname)8s] %(message)s", level=logging.WARNING)
+
+    parser = argparse.ArgumentParser(
+        description="Convert an IPS patch to a CRK patch"""
+    )
+    parser.add_argument(
+        "file",
+        type=argparse.FileType('rb'),
+        help="The original unpatched file the IPS patch applies to"
+    )
+    parser.add_argument(
+        "ips",
+        type=argparse.FileType('rb'),
+        help="The IPS file to convert (use '-' for stdin)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        metavar="<path>",
+        help="Write generated CRK patch to <path> instead of stdout",
+        type=argparse.FileType('wt'),
+        default="-"
+    )
+
+    args = parser.parse_args()
+
+    ips = IPSPatch.from_file(args.ips)
+    crk = Crk.from_ips_with_file(ips, args.file, filename=os.path.basename(args.file.name))
+
+    # Ignore BrokenPipeErrors on output
+    try:
+        print(crk.serialize(), file=args.output)
+        args.output.flush()
+    except BrokenPipeError:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), args.output.fileno())
+        sys.exit(128 + 13) # SIGPIPE
 
 if __name__ == "__main__":
     apply_crk()
