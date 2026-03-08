@@ -21,7 +21,7 @@ class InvalidFormat(ValueError):
 class Change:
     """A single byte change to a file"""
 
-    def __init__(self, offset: int, orig: bytes, patch: bytes):
+    def __init__(self, offset: int, orig: int, patch: int):
         self.offset = offset
         self.orig = orig
         self.patch = patch
@@ -29,17 +29,17 @@ class Change:
     def valid(self, fp) -> bool:
         """Check if this change is valid for the file"""
         fp.seek(self.offset)
-        return fp.read(1) in (self.orig, self.patch)
+        return fp.read(1)[0] in (self.orig, self.patch)
 
     def applied(self, fp) -> bool:
         """Checks if the change has been applied to the file"""
         fp.seek(self.offset)
-        return fp.read(1) == self.patch
+        return fp.read(1)[0] == self.patch
 
     def apply(self, fp, unpatch=False) -> bool:
         """Applies the change to the file"""
         fp.seek(self.offset)
-        return fp.write(self.orig if unpatch else self.patch) == 1
+        return fp.write(bytes([self.orig if unpatch else self.patch])) == 1
 
     @classmethod
     def parse(cls, s) -> "Change":
@@ -47,24 +47,24 @@ class Change:
             raise InvalidFormat(f"'{s}' is not a valid change")
         return cls(
             offset=int(m[1], 16),
-            orig=bytes.fromhex(m[2]),
-            patch=bytes.fromhex(m[3])
+            orig=int(m[2], 16),
+            patch=int(m[3], 16)
         )
 
     def __repr__(self) -> str:
         return "{}(offset={:08X}, orig={:02X}, patch={:02X})".format(
             self.__class__.__name__,
             self.offset,
-            self.orig[0],
-            self.patch[0]
+            self.orig,
+            self.patch
         )
 
     def serialize(self) -> str:
         """The change as it would appear in a crk file"""
         return "{:08X}: {:02X} {:02X}".format(
             self.offset,
-            self.orig[0],
-            self.patch[0]
+            self.orig,
+            self.patch
         )
 
 
@@ -241,8 +241,8 @@ def _find_changes(original: os.PathLike, patched: os.PathLike) -> List[Change]:
                 if b1 != b2:
                     changes.append(Change(
                         offset=offset + i,
-                        orig=bytes([b1]),
-                        patch=bytes([b2])
+                        orig=b1,
+                        patch=b2
                     ))
 
             offset += len(d1)
