@@ -122,10 +122,11 @@ class Patch:
 
     def serialize(self) -> str:
         """Serialize the patch for inclusion in a crk file"""
+        title = "\n;".join(self.title.splitlines())
         return "{}\n{}\n{}\n{}".format(
-            "\n;".join(self.title.splitlines()),
+            title,
             self.filename,
-            ";" + "-" * (len(self.title) - 1),
+            ";" + "-" * (max(map(len, title.splitlines())) - 1),
             "\n".join(x.serialize() for x in self.changes)
         )
 
