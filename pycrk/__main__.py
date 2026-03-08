@@ -34,6 +34,10 @@ def generate_crk() -> None:
 
     args = parser.parse_args()
 
+    for x in (args.original, args.patched):
+        if not os.path.exists(x):
+            raise ValueError(f"Path '{x}' does not exist")
+
     original_file, patched_file = (os.path.isfile(x) for x in (args.original, args.patched))
     if original_file ^ patched_file:
         raise ValueError("The two inputs need to both be files or directories")

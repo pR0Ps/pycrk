@@ -252,8 +252,11 @@ def _find_changes(original: os.PathLike, patched: os.PathLike) -> List[Change]:
 
 def make_file_crk(original: os.PathLike, patched: os.PathLike) -> Crk:
     """Generate a Crk object from the differences between two files"""
-    if not all(os.path.isfile(x) for x in (original, patched)):
-        raise ValueError("Can't make a file-based Crk from directories")
+    for x in (original, patched):
+        if not os.path.exists(x):
+            raise ValueError(f"Path '{x}' does not exist")
+        if not os.path.isfile(x):
+            raise ValueError(f"Path '{x}' is not a file")
 
     if not (changes := _find_changes(original, patched)):
         raise ValueError("Files are the same")
@@ -273,9 +276,11 @@ def make_file_crk(original: os.PathLike, patched: os.PathLike) -> Crk:
 
 def make_dir_crk(original_dir: os.PathLike, patched_dir: os.PathLike) -> Crk:
     """Generate a Crk object from the differences between two directories"""
-
-    if not all(os.path.isdir(x) for x in (original_dir, patched_dir)):
-        raise ValueError("Can't make a directory-based Crk from files")
+    for x in (original_dir, patched_dir):
+        if not os.path.exists(x):
+            raise ValueError(f"Path '{x}' does not exist")
+        if not os.path.isdir(x):
+            raise ValueError(f"Path '{x}' is not a directory")
 
     original, patched = (set(_walk_files(x)) for x in (original_dir, patched_dir))
 
